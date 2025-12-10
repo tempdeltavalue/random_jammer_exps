@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Raspberry Pi Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; text-align: center; margin-top: 50px; }
+        .chart-container { width: 40%; display: inline-block; margin: 20px; }
+        .controls { margin-top: 20px; }
+        button { padding: 10px 20px; font-size: 16px; margin: 5px; cursor: pointer; }
+        #modelStatus, #predictionResult { font-weight: bold; margin-top: 10px; }
+    </style>
+</head>
+<body>
+    <div class="controls">
+        <button id="runModelBtn">Run Model</button>
+        <button id="stopModelBtn">Stop Model</button>
+        <p>Model Status: <span id="modelStatus">Stopped</span></p>
+        <p>Prediction Result: <span id="predictionResult">N/A</span></p>
+    </div>
+    
+    <div class="chart-container">
+        <h2>CPU Temperature</h2>
+        <canvas id="cpuTempChart"></canvas>
+    </div>
+    <div class="chart-container">
+        <h2>Memory Usage</h2>
+        <canvas id="memoryChart"></canvas>
+    </div>
+
+    <script>
+        //... [Код графіків залишається без змін] ...
+        const cpuTempChartCtx = document.getElementById('cpuTempChart').getContext('2d');
+        const memoryChartCtx = document.getElementById('memoryChart').getContext('2d');
+
+        const cpuTempChart = new Chart(cpuTempChartCtx, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'CPU Temp (°C)',
+                    data: [],
+                    borderColor: 'rgb(255, 99, 132)',
+                    tension: 0.1
+                }]
+            },
+            options: {
+                scales: {
+                    y: {
+                        beginAtZero: true
+                    }
+                }
+            }
+        });
+
+        const memoryChart = new Chart(memoryChartCtx, {
+            type: 'bar',
+            data: {
+                labels: ['Used Memory'],
+                datasets: [{
+                    label: 'Memory (MB)',
+                    data: [],
+                    backgroundColor: 'rgba(54, 162, 235, 0.5)',
+                }]
+            },
+            options: {
+                scales: {
+                    y: {
+                        beginAtZero: true
+                    }
+                }
+            }
+        });
+
+        function updateModelStatus(status) {
+            document.getElementById('modelStatus').textContent = status;
+        }
+
+        function updatePredictionResult(result) {
+            document.getElementById('predictionResult').textContent = result !== null ? result.toFixed(4) : "N/A";
+        }
+
+        function fetchDataAndUpdateCharts() {
+            fetch('http://tempdelta.local:5000/pi-status')
+                .then(response => response.json())
+                .then(data => {
+                    // Оновлення графіків
+                    const time = new Date().toLocaleTimeString();
+                    cpuTempChart.data.labels.push(time);
+                    const temp = parseFloat(data.cpu_temperature.replace('temp=', '').replace('\'C', ''));
+                    cpuTempChart.data.datasets[0].data.push(temp);
+                    if (cpuTempChart.data.labels.length > 20) {
+                        cpuTempChart.data.labels.shift();
+                        cpuTempChart.data.datasets[0].data.shift();
+                    }
+                    cpuTempChart.update();
+                    
+                    const usedMem = parseInt(data.memory_usage.split(':')[1].split('/')[0].trim().replace('MB', ''));
+                    memoryChart.data.datasets[0].data[0] = usedMem;
+                    memoryChart.update();
+
+                    // Оновлення статусу моделі та результату
+                    updateModelStatus(data.model_status);
+                    updatePredictionResult(data.prediction);
+                })
+                .catch(error => console.error('Error fetching data:', error));
+        }
+
+        document.getElementById('runModelBtn').addEventListener('click', () => {
+            fetch('http://tempdelta.local:5000/run-model')
+                .then(response => response.json())
+                .then(data => console.log(data.message));
+        });
+
+        document.getElementById('stopModelBtn').addEventListener('click', () => {
+            fetch('http://tempdelta.local:5000/stop-model')
+                .then(response => response.json())
+                .then(data => console.log(data.message));
+        });
+
+        setInterval(fetchDataAndUpdateCharts, 1000);
+        fetchDataAndUpdateCharts();
+    </script>
+</body>
+</html>
